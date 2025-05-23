@@ -33,6 +33,40 @@ substitutions:
   cmd_category_leds_activity: '3'
 
   #
+  # A substitution list for entity names.
+  #
+  # Note: To use localized non-english names, simply comment out
+  #       the english ones and uncomment names you prefer.
+  #
+  # Entity names in english.
+  #
+  speed_name: 'speed'
+  speed_0_name: 'speed 0'
+  speed_1_name: 'speed 1'
+  speed_2_name: 'speed 2'
+  speed_3_name: 'speed 3'
+  speed_4_name: 'speed 4'
+  speed_5_name: 'speed 5'
+  leds_off_name: "LEDs turn off"
+  leds_on_name: "LEDs turn on"
+  leds_blue_name: "LEDs set blue"
+  leds_yellow_name: "LEDs set yellow"
+  #
+  # Entity names in czech.
+  #
+  # speed_name: 'rychlost'
+  # speed_0_name: 'rychlost 0'
+  # speed_1_name: 'rychlost 1'
+  # speed_2_name: 'rychlost 2'
+  # speed_3_name: 'rychlost 3'
+  # speed_4_name: 'rychlost 4'
+  # speed_5_name: 'rychlost 5'
+  # leds_off_name: "LEDky deaktivivovat"
+  # leds_on_name: "LEDky aktivivovat"
+  # leds_blue_name: "LEDky nastavit modre"
+  # leds_yellow_name: "LEDky nastavit zlute"
+
+  #
   # An area zone where controlled Ventulo unit resides.
   #
   node_area: 'kitchen'
@@ -270,7 +304,7 @@ globals:
 #
 switch:
   - platform: template
-    name: "speed 0"
+    name: ${speed_0_name}
     id: "speed_0_switch"
     lambda: 'return id(command_no) == ${cmd_speed_0};'
     #
@@ -288,7 +322,7 @@ switch:
           );
 
   - platform: template
-    name: "speed 1"
+    name: ${speed_1_name}
     id: "speed_1_switch"
     lambda: 'return id(command_no) == ${cmd_speed_1};'
     icon: "mdi:numeric-1-box-outline"
@@ -299,7 +333,7 @@ switch:
           );
 
   - platform: template
-    name: "speed 2"
+    name: ${speed_2_name}
     id: "speed_2_switch"
     lambda: 'return id(command_no) == ${cmd_speed_2};'
     icon: "mdi:numeric-2-box-outline"
@@ -310,7 +344,7 @@ switch:
           );
 
   - platform: template
-    name: "speed 3"
+    name: ${speed_3_name}
     id: "speed_3_switch"
     lambda: 'return id(command_no) == ${cmd_speed_3};'
     icon: "mdi:numeric-3-box-outline"
@@ -321,7 +355,7 @@ switch:
           );
 
   - platform: template
-    name: "speed 4"
+    name: ${speed_4_name}
     id: "speed_4_switch"
     lambda: 'return id(command_no) == ${cmd_speed_4};'
     icon: "mdi:numeric-4-box-outline"
@@ -332,7 +366,7 @@ switch:
           );
 
   - platform: template
-    name: "speed 5"
+    name: ${speed_5_name}
     id: "speed_5_switch"
     lambda: 'return id(command_no) == ${cmd_speed_5};'
     icon: "mdi:numeric-5-box-outline"
@@ -343,7 +377,7 @@ switch:
           );
 
   - platform: template
-    name: "LEDs turn off"
+    name: ${leds_off_name}
     id: "leds_off_switch"
     lambda: 'return id(command_no) == ${cmd_leds_off};'
     icon: "mdi:led-variant-off"
@@ -354,7 +388,7 @@ switch:
           );
 
   - platform: template
-    name: "LEDs turn on"
+    name: ${leds_on_name}
     id: "leds_on_switch"
     lambda: 'return id(command_no) == ${cmd_leds_on};'
     icon: "mdi:led-on"
@@ -365,7 +399,7 @@ switch:
           );
 
   - platform: template
-    name: "LEDs set blue"
+    name: ${leds_blue_name}
     id: "leds_blue_switch"
     lambda: 'return id(command_no) == ${cmd_leds_blue};'
     icon: "mdi:weather-night"
@@ -376,7 +410,7 @@ switch:
           );
 
   - platform: template
-    name: "LEDs set yellow"
+    name: ${leds_yellow_name}
     id: "leds_yellow_switch"
     lambda: 'return id(command_no) == ${cmd_leds_yellow};'
     icon: "mdi:brightness-5"
@@ -394,7 +428,7 @@ switch:
 #
 number:
   - platform: template
-    name: "speed"
+    name: ${speed_name}
     id: "speed_number"
     icon: "mdi:fan"
     step: 1
