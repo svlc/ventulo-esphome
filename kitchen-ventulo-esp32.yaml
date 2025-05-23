@@ -1,0 +1,310 @@
+#
+# A configuration for a `esphome` node to be used for a smart control
+# of one `Ventulo` heat-recovery unit.
+#
+
+#
+# Note: Substitutions defined here can be used by `${substitution}` syntax:
+#       https://esphome.io/components/substitutions.html
+#
+substitutions:
+  #
+  # A list of ids representing all available commands.
+  #
+  cmd_none: '0'
+  cmd_speed_0: '1'
+  cmd_speed_1: '2'
+  cmd_speed_2: '3'
+  cmd_speed_3: '4'
+  cmd_speed_4: '5'
+  cmd_speed_5: '6'
+  cmd_leds_blue: '7'
+  cmd_leds_yellow: '8'
+  cmd_leds_off: '9'
+  cmd_leds_on: '10'
+
+  #
+  # An area zone where controlled Ventulo unit resides.
+  #
+  node_area: 'kitchen'
+
+esphome:
+  #
+  # A name of a node that is unique within a whole esphome network.
+  #
+  # Note: It's useful to include node's area zone in the name.
+  #
+  #       More at: https://github.com/Trikos/Home-Assistant-Naming-Convention
+  #
+  # Note: Use hyphen (`-`) as a delimiter, avoid using an underscore (`_`).
+  #
+  name: ${node_area}-ventulo-esp32
+  friendly_name: ${node_area}-ventulo
+  # An optional area zone (is used by Home Assistant frontend).
+  area: ${node_area}
+
+  on_boot:
+    then:
+      - lambda: |-
+          id(set_speed_script)->execute(id(speed_no));
+
+esp32:
+  board: wemos_d1_uno32
+
+# enable logging
+logger:
+
+# enable Home Assistant API
+api:
+  password: ""
+
+wifi:
+  #
+  # Note: A `!secret` construct allows to hide sensitive credentials from this
+  #       config file. Values get loaded from a yaml file `secrets.yaml`.
+  #
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  #
+  # Disable fast connection to a WiFi network (a default).
+  #
+  # Note: When set to `on`, a device directly connects without doing
+  #       a full scan first (thus it always connects to a first specified
+  #       WiFi no matter what -- this can reduce connection times a lot).
+  #
+  fast_connect: off
+
+
+#
+# Scripts (a concept similar to functions in programming).
+#
+# https://esphome.io/components/script.html
+#
+script:
+  - id: set_speed_script
+    parameters:
+      speed_level: int
+    then:
+      - lambda: |-
+          switch (speed_level) {
+            case 0:
+              id(speed_0_switch).turn_on();
+              break;
+            case 1:
+              id(speed_1_switch).turn_on();
+              break;
+            case 2:
+              id(speed_2_switch).turn_on();
+              break;
+            case 3:
+              id(speed_3_switch).turn_on();
+              break;
+            case 4:
+              id(speed_4_switch).turn_on();
+              break;
+            case 5:
+              id(speed_5_switch).turn_on();
+              break;
+            default:
+              // Activate `speed_1` in other cases.
+              id(speed_1_switch).turn_on();
+              break;
+          };
+
+  #
+  # A script for activating specific command and setting a follow-up delay.
+  #
+  - id: activate_command_script
+    parameters:
+      cmd_no: int
+      #
+      # A speed level to activate.
+      #
+      # Note: Pass `-1` for non-speed commands (like `leds_yellow`).
+      #
+      speed_level: int
+      # A requested percentual PWM value (a value within <0.0, 100.0>).
+      pwm_value: float
+      delay_ms: int
+    then:
+      - lambda: |-
+          id(command_no) = cmd_no;
+          /*
+           *  Set a speed level vars only if it is a speed-related command.
+           */
+          if (speed_level >= 0) {
+            id(speed_no) = speed_level;
+            id(speed_number).publish_state(speed_level);
+          }
+          /*
+           * Note: `set_level()` requires range <0.0, 1.0>.
+           */
+          id(pwm_output).set_level(pwm_value / 100.0);
+
+      #
+      # Note: Parameters are accessible only within lambda.
+      #
+      - delay: !lambda return delay_ms;
+
+
+output:
+  #
+  # Note: A `ledc` platform needs to be used with `ESP32`, whereas
+  #       `ESP8266` requires `esp8266_pwm`.
+  #
+  - platform: ledc
+    pin: GPIO13
+    #
+    # Note: The Ventulo heat-recovery unit understands PWM signal
+    #       of roughly 400 Hz.
+    #
+    frequency: "400 Hz"
+    channel: 0
+    inverted: true
+    id: pwm_output
+
+globals:
+  #
+  # Id of currently active command.
+  #
+  - id: command_no
+    type: int
+    initial_value: ${cmd_none}
+
+  - id: speed_no
+    type: int
+    initial_value: "1"
+    # Store this variable in a non-volatile memory and restore it on reboot.
+    restore_value: yes
+
+#
+#
+#
+switch:
+  - platform: template
+    name: "speed 0"
+    id: "speed_0_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_0};'
+    #
+    # Set a MDI icon.
+    # More at: https://materialdesignicons.com/cdn/1.6.50-dev/
+    #
+    icon: "mdi:numeric-0-box-outline"
+    #
+    # An action to be performed when [HA frontend] requests to turn switch on.
+    #
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(${cmd_speed_0}, 0, 9.0, 0);
+
+  - platform: template
+    name: "speed 1"
+    id: "speed_1_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_1};'
+    icon: "mdi:numeric-1-box-outline"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(${cmd_speed_1}, 1, 18.0, 0);
+
+  - platform: template
+    name: "speed 2"
+    id: "speed_2_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_2};'
+    icon: "mdi:numeric-2-box-outline"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(${cmd_speed_2}, 2, 27.0, 0);
+
+  - platform: template
+    name: "speed 3"
+    id: "speed_3_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_3};'
+    icon: "mdi:numeric-3-box-outline"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(${cmd_speed_3}, 3, 36.0, 0);
+
+  - platform: template
+    name: "speed 4"
+    id: "speed_4_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_4};'
+    icon: "mdi:numeric-4-box-outline"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(${cmd_speed_4}, 4, 45.0, 0);
+
+  - platform: template
+    name: "speed 5"
+    id: "speed_5_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_5};'
+    icon: "mdi:numeric-5-box-outline"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(${cmd_speed_5}, 5, 54.0, 0);
+
+  - platform: template
+    name: "LEDs turn off"
+    id: "leds_off_switch"
+    lambda: 'return id(command_no) == ${cmd_leds_off};'
+    icon: "mdi:led-variant-off"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(${cmd_leds_off}, -1, 90.0, 0);
+
+  - platform: template
+    name: "LEDs turn on"
+    id: "leds_on_switch"
+    lambda: 'return id(command_no) == ${cmd_leds_on};'
+    icon: "mdi:led-on"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(${cmd_leds_on}, -1, 81.0, 0);
+
+  - platform: template
+    name: "LEDs set blue"
+    id: "leds_blue_switch"
+    lambda: 'return id(command_no) == ${cmd_leds_blue};'
+    icon: "mdi:weather-night"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(${cmd_leds_blue}, -1, 63.0, 0);
+
+  - platform: template
+    name: "LEDs set yellow"
+    id: "leds_yellow_switch"
+    lambda: 'return id(command_no) == ${cmd_leds_yellow};'
+    icon: "mdi:brightness-5"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(${cmd_leds_yellow}, -1, 72.0, 0);
+
+#
+# A `number` component with `slider` mode which allows to select
+# and represent a current speed level.
+#
+# https://esphome.io/components/number/template.html
+#
+number:
+  - platform: template
+    name: "speed"
+    id: "speed_number"
+    icon: "mdi:fan"
+    step: 1
+    min_value: 0
+    max_value: 5
+    mode: slider
+    optimistic: true
+
+    #
+    # An action to be performed when [HA frontend] requests to set a `number`
+    # value.
+    #
+    set_action:
+      then:
+        # define a void function
+        lambda: |-
+          /*
+           * Note: A value of `number` component is stored in `x` within lambda.
+           *       We need to cast it to integer though.
+           */
+          id(set_speed_script)->execute(int(x));
