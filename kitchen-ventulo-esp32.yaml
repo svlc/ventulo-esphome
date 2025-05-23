@@ -23,6 +23,15 @@ substitutions:
   cmd_leds_off: '9'
   cmd_leds_on: '10'
 
+
+  #
+  # A list of ids representing categories of individual commands.
+  #  
+  cmd_category_none: '0'
+  cmd_category_speed: '1'
+  cmd_category_leds_color: '2'
+  cmd_category_leds_activity: '3'
+
   #
   # An area zone where controlled Ventulo unit resides.
   #
@@ -81,6 +90,26 @@ wifi:
 # https://esphome.io/components/script.html
 #
 script:
+  #
+  # A timer script to be used to measure some time period.
+  #
+  # Note: We can use `script.wait` action to wait for it to end or check
+  #       if requested time elapsed by using `script.is_running` action.
+  #
+  - id: timer_script
+    mode: restart
+    parameters:
+      delay_ms: int
+    then:
+      #
+      # Note: This `delay` action is asynchronous. Should we
+      #       use `delay()` function within lambda, it would be synchronous
+      #       and would stop execution of whole ESP device!
+      #
+      # Note: Parameters are accessible only within lambda.
+      #
+      - delay: !lambda 'return delay_ms;'
+
   - id: set_speed_script
     parameters:
       speed_level: int
@@ -115,8 +144,11 @@ script:
   # A script for activating specific command and setting a follow-up delay.
   #
   - id: activate_command_script
+    mode: queued
+    max_runs: 8
     parameters:
       cmd_no: int
+      cmd_category_no: int
       #
       # A speed level to activate.
       #
@@ -127,6 +159,36 @@ script:
       pwm_value: float
       delay_ms: int
     then:
+      #
+      # If a previously requested command has a different category than
+      # a newly requested one (case of e.g. `speed_3` and `leds_off` commands)
+      # then we wait for the `timer_script` to end first. Then we can be sure
+      # that a previous command was active long enough to let the Ventulo
+      # unit to interpret it.
+      #
+      # If categories are same (case of e.g. categories of `leds_off`
+      # and `leds_on` commands), then we can ignore the `timer_script`
+      # and change the command immediately.
+      #
+      # Note: We could solve it without categories by adding a simple ~1 sec
+      #       delay before activating the new command. However, this would
+      #       be very noticeable in the UI.
+      #
+      #       This used `category` solution is much more elegant and typically
+      #       allows user to switch between entities fast way (unless user
+      #       quickly activates UI entities belonging to different categories).
+      #
+      - if:
+          condition:
+            # a boolean condition
+            lambda: |-
+              return id(command_category_no) != cmd_category_no;
+          then:
+            - script.wait: timer_script
+            - lambda: |-
+                // Update the category number.
+                id(command_category_no) = cmd_category_no;
+
       - lambda: |-
           id(command_no) = cmd_no;
           /*
@@ -141,11 +203,10 @@ script:
            */
           id(pwm_output).set_level(pwm_value / 100.0);
 
-      #
-      # Note: Parameters are accessible only within lambda.
-      #
-      - delay: !lambda return delay_ms;
-
+      # restart the `script`
+      - script.execute:
+          id: timer_script
+          delay_ms: 1000
 
 output:
   #
@@ -171,6 +232,33 @@ globals:
     type: int
     initial_value: ${cmd_none}
 
+  #
+  # A category id of a currently active command.
+  #
+  # Note: This is used to make sure the Ventulo unit gets enough time
+  #       to interpret a command when user activates different entities
+  #       (like `speed_1`, `leds_blue`) too quickly.
+  #
+  #       The Ventulo unit needs to receive a command in the form of
+  #       a specific repeated PWM duty cycle lasting ideally 1s or more
+  #       to recognize it.
+  #
+  #       If user requests a command that has a same category as a previous
+  #       command (e.g. `speed_1` and `speed_3`), we can change a transmitted
+  #       PWM duty cycle value **immediately**. We don't care if the unit
+  #       does not have time to interpret `speed_1` as we can overwrite it
+  #       it with `speed_3`.
+  #
+  #       In case categories of previous and currect commands differ
+  #       (e.g. `speed_1` and `leds_blue`), we want to introduce a ~1s delay
+  #       so that an original command (`speed_1` in this case) is repeated
+  #       hundreds of times and the Ventulo unit is able to interpret both of
+  #       these independent commands (first `speed_1`, then `leds_blue`).
+  #
+  - id: command_category_no
+    type: int
+    initial_value: ${cmd_category_none}
+
   - id: speed_no
     type: int
     initial_value: "1"
@@ -195,7 +283,9 @@ switch:
     #
     turn_on_action:
       - lambda: |-
-          id(activate_command_script)->execute(${cmd_speed_0}, 0, 9.0, 0);
+          id(activate_command_script)->execute(
+            ${cmd_speed_0}, ${cmd_category_speed}, 0, 9.0, 0
+          );
 
   - platform: template
     name: "speed 1"
@@ -204,7 +294,9 @@ switch:
     icon: "mdi:numeric-1-box-outline"
     turn_on_action:
       - lambda: |-
-          id(activate_command_script)->execute(${cmd_speed_1}, 1, 18.0, 0);
+          id(activate_command_script)->execute(
+            ${cmd_speed_1}, ${cmd_category_speed}, 1, 18.0, 0
+          );
 
   - platform: template
     name: "speed 2"
@@ -213,7 +305,9 @@ switch:
     icon: "mdi:numeric-2-box-outline"
     turn_on_action:
       - lambda: |-
-          id(activate_command_script)->execute(${cmd_speed_2}, 2, 27.0, 0);
+          id(activate_command_script)->execute(
+            ${cmd_speed_2}, ${cmd_category_speed}, 2, 27.0, 0
+          );
 
   - platform: template
     name: "speed 3"
@@ -222,7 +316,9 @@ switch:
     icon: "mdi:numeric-3-box-outline"
     turn_on_action:
       - lambda: |-
-          id(activate_command_script)->execute(${cmd_speed_3}, 3, 36.0, 0);
+          id(activate_command_script)->execute(
+            ${cmd_speed_3}, ${cmd_category_speed}, 3, 36.0, 0
+          );
 
   - platform: template
     name: "speed 4"
@@ -231,7 +327,9 @@ switch:
     icon: "mdi:numeric-4-box-outline"
     turn_on_action:
       - lambda: |-
-          id(activate_command_script)->execute(${cmd_speed_4}, 4, 45.0, 0);
+          id(activate_command_script)->execute(
+            ${cmd_speed_4}, ${cmd_category_speed}, 4, 45.0, 0
+          );
 
   - platform: template
     name: "speed 5"
@@ -240,7 +338,9 @@ switch:
     icon: "mdi:numeric-5-box-outline"
     turn_on_action:
       - lambda: |-
-          id(activate_command_script)->execute(${cmd_speed_5}, 5, 54.0, 0);
+          id(activate_command_script)->execute(
+            ${cmd_speed_5}, ${cmd_category_speed}, 5, 54.0, 0
+          );
 
   - platform: template
     name: "LEDs turn off"
@@ -249,7 +349,9 @@ switch:
     icon: "mdi:led-variant-off"
     turn_on_action:
       - lambda: |-
-          id(activate_command_script)->execute(${cmd_leds_off}, -1, 90.0, 0);
+          id(activate_command_script)->execute(
+            ${cmd_leds_off}, ${cmd_category_leds_activity}, -1, 90.0, 0
+          );
 
   - platform: template
     name: "LEDs turn on"
@@ -258,7 +360,9 @@ switch:
     icon: "mdi:led-on"
     turn_on_action:
       - lambda: |-
-          id(activate_command_script)->execute(${cmd_leds_on}, -1, 81.0, 0);
+          id(activate_command_script)->execute(
+            ${cmd_leds_on}, ${cmd_category_leds_activity}, -1, 81.0, 0
+          );
 
   - platform: template
     name: "LEDs set blue"
@@ -267,7 +371,9 @@ switch:
     icon: "mdi:weather-night"
     turn_on_action:
       - lambda: |-
-          id(activate_command_script)->execute(${cmd_leds_blue}, -1, 63.0, 0);
+          id(activate_command_script)->execute(
+            ${cmd_leds_blue}, ${cmd_category_leds_color}, -1, 63.0, 0
+          );
 
   - platform: template
     name: "LEDs set yellow"
@@ -276,7 +382,9 @@ switch:
     icon: "mdi:brightness-5"
     turn_on_action:
       - lambda: |-
-          id(activate_command_script)->execute(${cmd_leds_yellow}, -1, 72.0, 0);
+          id(activate_command_script)->execute(
+            ${cmd_leds_yellow}, ${cmd_category_leds_color}, -1, 72.0, 0
+          );
 
 #
 # A `number` component with `slider` mode which allows to select
