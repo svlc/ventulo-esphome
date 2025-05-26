@@ -28,15 +28,15 @@ Instructions
    .. note::
 
       If u happen to have several Ventulo heat-recovery units in a same area,
-      but use ESP device for each one of them, you should append a number to
-      an area, so it's named e.g. `kitchen1` as you'll need several YAML
+      but use one ESP device for each one of them, you should append a number
+      to an area, so it's named e.g. `kitchen1` as you'll need several YAML
       config files.
 
 #) Create a `secret.yaml` file by copying a `secret.yaml.example`
    file and fill credentials of your Home Assistant WiFi network.
 
 
-#) If you prefere localized names of entities, check the `substitutions`
+#) If you prefer localized names of entities, check the `substitutions`
    section of the config file.
 
 #) Compile the firmware and flash your ESP device.
