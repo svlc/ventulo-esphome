@@ -1,0 +1,451 @@
+#
+# A configuration for a `esphome` node to be used for a smart control
+# of one `Ventulo` heat-recovery unit.
+#
+
+#
+# Note: Substitutions defined here can be used by `${substitution}` syntax:
+#       https://esphome.io/components/substitutions.html
+#
+substitutions:
+  #
+  # A list of ids representing all available commands.
+  #
+  cmd_none: '0'
+  cmd_speed_0: '1'
+  cmd_speed_1: '2'
+  cmd_speed_2: '3'
+  cmd_speed_3: '4'
+  cmd_speed_4: '5'
+  cmd_speed_5: '6'
+  cmd_leds_blue: '7'
+  cmd_leds_yellow: '8'
+  cmd_leds_off: '9'
+  cmd_leds_on: '10'
+
+
+  #
+  # A list of ids representing categories of individual commands.
+  #  
+  cmd_category_none: '0'
+  cmd_category_speed: '1'
+  cmd_category_leds_color: '2'
+  cmd_category_leds_activity: '3'
+
+  #
+  # A substitution list for entity names.
+  #
+  # Note: To use localized non-english names, simply comment out
+  #       the english ones and uncomment names you prefer.
+  #
+  # Entity names in english.
+  #
+  speed_name: 'speed'
+  speed_0_name: 'speed 0'
+  speed_1_name: 'speed 1'
+  speed_2_name: 'speed 2'
+  speed_3_name: 'speed 3'
+  speed_4_name: 'speed 4'
+  speed_5_name: 'speed 5'
+  leds_off_name: "LEDs turn off"
+  leds_on_name: "LEDs turn on"
+  leds_blue_name: "LEDs set blue"
+  leds_yellow_name: "LEDs set yellow"
+  #
+  # Entity names in czech.
+  #
+  # speed_name: 'rychlost'
+  # speed_0_name: 'rychlost 0'
+  # speed_1_name: 'rychlost 1'
+  # speed_2_name: 'rychlost 2'
+  # speed_3_name: 'rychlost 3'
+  # speed_4_name: 'rychlost 4'
+  # speed_5_name: 'rychlost 5'
+  # leds_off_name: "LEDky deaktivivovat"
+  # leds_on_name: "LEDky aktivivovat"
+  # leds_blue_name: "LEDky nastavit modre"
+  # leds_yellow_name: "LEDky nastavit zlute"
+
+  #
+  # An area zone where controlled Ventulo unit resides.
+  #
+  node_area: 'kitchen'
+
+esphome:
+  #
+  # A name of a node that is unique within a whole esphome network.
+  #
+  # Note: It's useful to include node's area zone in the name.
+  #
+  #       More at: https://github.com/Trikos/Home-Assistant-Naming-Convention
+  #
+  # Note: Use hyphen (`-`) as a delimiter, avoid using an underscore (`_`).
+  #
+  name: ${node_area}-ventulo-esp8266
+  friendly_name: ${node_area}-ventulo
+  # An optional area zone (is used by Home Assistant frontend).
+  area: ${node_area}
+
+  on_boot:
+    then:
+      - lambda: |-
+          id(set_speed_script)->execute(id(speed_no));
+
+esp8266:
+  board: nodemcuv2
+
+# enable logging
+logger:
+
+# enable Home Assistant API
+api:
+  password: ""
+
+wifi:
+  #
+  # Note: A `!secret` construct allows to hide sensitive credentials from this
+  #       config file. Values get loaded from a yaml file `secrets.yaml`.
+  #
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  #
+  # Disable fast connection to a WiFi network (a default).
+  #
+  # Note: When set to `on`, a device directly connects without doing
+  #       a full scan first (thus it always connects to a first specified
+  #       WiFi no matter what -- this can reduce connection times a lot).
+  #
+  fast_connect: off
+
+
+#
+# Scripts (a concept similar to functions in programming).
+#
+# https://esphome.io/components/script.html
+#
+script:
+  #
+  # A timer script to be used to measure some time period.
+  #
+  # Note: We can use `script.wait` action to wait for it to end or check
+  #       if requested time elapsed by using `script.is_running` action.
+  #
+  - id: timer_script
+    mode: restart
+    parameters:
+      delay_ms: int
+    then:
+      #
+      # Note: This `delay` action is asynchronous. Should we
+      #       use `delay()` function within lambda, it would be synchronous
+      #       and would stop execution of whole ESP device!
+      #
+      # Note: Parameters are accessible only within lambda.
+      #
+      - delay: !lambda 'return delay_ms;'
+
+  - id: set_speed_script
+    parameters:
+      speed_level: int
+    then:
+      - lambda: |-
+          switch (speed_level) {
+            case 0:
+              id(speed_0_switch).turn_on();
+              break;
+            case 1:
+              id(speed_1_switch).turn_on();
+              break;
+            case 2:
+              id(speed_2_switch).turn_on();
+              break;
+            case 3:
+              id(speed_3_switch).turn_on();
+              break;
+            case 4:
+              id(speed_4_switch).turn_on();
+              break;
+            case 5:
+              id(speed_5_switch).turn_on();
+              break;
+            default:
+              // Activate `speed_1` in other cases.
+              id(speed_1_switch).turn_on();
+              break;
+          };
+
+  #
+  # A script for activating specific command and setting a follow-up delay.
+  #
+  - id: activate_command_script
+    mode: queued
+    max_runs: 8
+    parameters:
+      cmd_no: int
+      cmd_category_no: int
+      #
+      # A speed level to activate.
+      #
+      # Note: Pass `-1` for non-speed commands (like `leds_yellow`).
+      #
+      speed_level: int
+      # A requested percentual PWM value (a value within <0.0, 100.0>).
+      pwm_value: float
+      delay_ms: int
+    then:
+      #
+      # If a previously requested command has a different category than
+      # a newly requested one (case of e.g. `speed_3` and `leds_off` commands)
+      # then we wait for the `timer_script` to end first. Then we can be sure
+      # that a previous command was active long enough to let the Ventulo
+      # unit to interpret it.
+      #
+      # If categories are same (case of e.g. categories of `leds_off`
+      # and `leds_on` commands), then we can ignore the `timer_script`
+      # and change the command immediately.
+      #
+      # Note: We could solve it without categories by adding a simple ~1 sec
+      #       delay before activating the new command. However, this would
+      #       be very noticeable in the UI.
+      #
+      #       This used `category` solution is much more elegant and typically
+      #       allows user to switch between entities fast way (unless user
+      #       quickly activates UI entities belonging to different categories).
+      #
+      - if:
+          condition:
+            # a boolean condition
+            lambda: |-
+              return id(command_category_no) != cmd_category_no;
+          then:
+            - script.wait: timer_script
+            - lambda: |-
+                // Update the category number.
+                id(command_category_no) = cmd_category_no;
+
+      - lambda: |-
+          id(command_no) = cmd_no;
+          /*
+           *  Set a speed level vars only if it is a speed-related command.
+           */
+          if (speed_level >= 0) {
+            id(speed_no) = speed_level;
+            id(speed_number).publish_state(speed_level);
+          }
+          /*
+           * Note: `set_level()` requires range <0.0, 1.0>.
+           */
+          id(pwm_output).set_level(pwm_value / 100.0);
+
+      # restart the `script`
+      - script.execute:
+          id: timer_script
+          delay_ms: 1000
+
+output:
+  #
+  # Note: A `ledc` platform needs to be used with `ESP32`, whereas
+  #       `ESP8266` requires `esp8266_pwm`.
+  #
+  - platform: esp8266_pwm
+    pin: GPIO12
+    #
+    # Note: The Ventulo heat-recovery unit understands PWM signal
+    #       of roughly 400 Hz.
+    #
+    frequency: "400 Hz"
+    inverted: true
+    id: pwm_output
+
+globals:
+  #
+  # Id of currently active command.
+  #
+  - id: command_no
+    type: int
+    initial_value: ${cmd_none}
+
+  #
+  # A category id of a currently active command.
+  #
+  # Note: This is used to make sure the Ventulo unit gets enough time
+  #       to interpret a command when user activates different entities
+  #       (like `speed_1`, `leds_blue`) too quickly.
+  #
+  #       The Ventulo unit needs to receive a command in the form of
+  #       a specific repeated PWM duty cycle lasting ideally 1s or more
+  #       to recognize it.
+  #
+  #       If user requests a command that has a same category as a previous
+  #       command (e.g. `speed_1` and `speed_3`), we can change a transmitted
+  #       PWM duty cycle value **immediately**. We don't care if the unit
+  #       does not have time to interpret `speed_1` as we can overwrite it
+  #       it with `speed_3`.
+  #
+  #       In case categories of previous and currect commands differ
+  #       (e.g. `speed_1` and `leds_blue`), we want to introduce a ~1s delay
+  #       so that an original command (`speed_1` in this case) is repeated
+  #       hundreds of times and the Ventulo unit is able to interpret both of
+  #       these independent commands (first `speed_1`, then `leds_blue`).
+  #
+  - id: command_category_no
+    type: int
+    initial_value: ${cmd_category_none}
+
+  - id: speed_no
+    type: int
+    initial_value: "1"
+    # Store this variable in a non-volatile memory and restore it on reboot.
+    restore_value: yes
+
+#
+#
+#
+switch:
+  - platform: template
+    name: ${speed_0_name}
+    id: "speed_0_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_0};'
+    #
+    # Set a MDI icon.
+    # More at: https://materialdesignicons.com/cdn/1.6.50-dev/
+    #
+    icon: "mdi:numeric-0-box-outline"
+    #
+    # An action to be performed when [HA frontend] requests to turn switch on.
+    #
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(
+            ${cmd_speed_0}, ${cmd_category_speed}, 0, 9.0, 0
+          );
+
+  - platform: template
+    name: ${speed_1_name}
+    id: "speed_1_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_1};'
+    icon: "mdi:numeric-1-box-outline"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(
+            ${cmd_speed_1}, ${cmd_category_speed}, 1, 18.0, 0
+          );
+
+  - platform: template
+    name: ${speed_2_name}
+    id: "speed_2_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_2};'
+    icon: "mdi:numeric-2-box-outline"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(
+            ${cmd_speed_2}, ${cmd_category_speed}, 2, 27.0, 0
+          );
+
+  - platform: template
+    name: ${speed_3_name}
+    id: "speed_3_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_3};'
+    icon: "mdi:numeric-3-box-outline"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(
+            ${cmd_speed_3}, ${cmd_category_speed}, 3, 36.0, 0
+          );
+
+  - platform: template
+    name: ${speed_4_name}
+    id: "speed_4_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_4};'
+    icon: "mdi:numeric-4-box-outline"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(
+            ${cmd_speed_4}, ${cmd_category_speed}, 4, 45.0, 0
+          );
+
+  - platform: template
+    name: ${speed_5_name}
+    id: "speed_5_switch"
+    lambda: 'return id(command_no) == ${cmd_speed_5};'
+    icon: "mdi:numeric-5-box-outline"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(
+            ${cmd_speed_5}, ${cmd_category_speed}, 5, 54.0, 0
+          );
+
+  - platform: template
+    name: ${leds_off_name}
+    id: "leds_off_switch"
+    lambda: 'return id(command_no) == ${cmd_leds_off};'
+    icon: "mdi:led-variant-off"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(
+            ${cmd_leds_off}, ${cmd_category_leds_activity}, -1, 90.0, 0
+          );
+
+  - platform: template
+    name: ${leds_on_name}
+    id: "leds_on_switch"
+    lambda: 'return id(command_no) == ${cmd_leds_on};'
+    icon: "mdi:led-on"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(
+            ${cmd_leds_on}, ${cmd_category_leds_activity}, -1, 81.0, 0
+          );
+
+  - platform: template
+    name: ${leds_blue_name}
+    id: "leds_blue_switch"
+    lambda: 'return id(command_no) == ${cmd_leds_blue};'
+    icon: "mdi:weather-night"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(
+            ${cmd_leds_blue}, ${cmd_category_leds_color}, -1, 63.0, 0
+          );
+
+  - platform: template
+    name: ${leds_yellow_name}
+    id: "leds_yellow_switch"
+    lambda: 'return id(command_no) == ${cmd_leds_yellow};'
+    icon: "mdi:brightness-5"
+    turn_on_action:
+      - lambda: |-
+          id(activate_command_script)->execute(
+            ${cmd_leds_yellow}, ${cmd_category_leds_color}, -1, 72.0, 0
+          );
+
+#
+# A `number` component with `slider` mode which allows to select
+# and represent a current speed level.
+#
+# https://esphome.io/components/number/template.html
+#
+number:
+  - platform: template
+    name: ${speed_name}
+    id: "speed_number"
+    icon: "mdi:fan"
+    step: 1
+    min_value: 0
+    max_value: 5
+    mode: slider
+    optimistic: true
+
+    #
+    # An action to be performed when [HA frontend] requests to set a `number`
+    # value.
+    #
+    set_action:
+      then:
+        # define a void function
+        lambda: |-
+          /*
+           * Note: A value of `number` component is stored in `x` within lambda.
+           *       We need to cast it to integer though.
+           */
+          id(set_speed_script)->execute(int(x));
