@@ -45,11 +45,9 @@ Instructions
 
    .. code::
 
-   # 
-   # CONF=kitchen-ventulo-esp32.yaml;
-   #
-   # Validate the YAML, compile, upload binary and start logs
-   # (board is expected to be available under serial interface `ttyUSB0`).
-   #
-   # $ esphome run --device /dev/ttyUSB0 ${CONF};
-   #
+     CONF=kitchen-ventulo-esp32.yaml;
+     #
+     # Validate the YAML, compile, upload binary and start logs
+     # (board is expected to be available under serial interface `ttyUSB0`).
+     #
+     $ esphome run --device /dev/ttyUSB0 ${CONF};
